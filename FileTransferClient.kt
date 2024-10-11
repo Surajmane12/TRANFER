@@ -16,15 +16,23 @@ class FileTransferClient(private val host: String, private val port: Int) {
             print("Enter command (UPLOAD <filename> | DOWNLOAD <filename> | EXIT): ")
             val command = input.readLine() ?: break
             if (command == "EXIT") break
-            output.writeBytes(command + "\n")
+
             when {
                 command.startsWith("UPLOAD") -> {
                     val fileName = command.substringAfter(" ")
-                    sendFile(fileName, output)
+                    if (File(fileName).exists()) {
+                        sendFile(fileName, output)
+                    } else {
+                        println("Error: File not found: $fileName")
+                    }
                 }
                 command.startsWith("DOWNLOAD") -> {
                     val fileName = command.substringAfter(" ")
+                    output.writeBytes(command + "\n")  // Notify the server to download
                     receiveFile(fileName, socket.getInputStream())
+                }
+                else -> {
+                    println("Invalid command. Please use UPLOAD, DOWNLOAD, or EXIT.")
                 }
             }
         }
@@ -33,9 +41,10 @@ class FileTransferClient(private val host: String, private val port: Int) {
     }
 
     private fun sendFile(fileName: String, output: DataOutputStream) {
-        val file = File(fileName)
-        if (file.exists()) {
+        try {
+            val file = File(fileName)
             output.writeBytes("UPLOAD $fileName\n")
+
             FileInputStream(file).use { fis ->
                 val buffer = ByteArray(4096)
                 var bytesRead: Int
@@ -44,34 +53,42 @@ class FileTransferClient(private val host: String, private val port: Int) {
                 }
             }
             println("Uploaded file: $fileName")
-        } else {
-            println("File not found: $fileName")
+        } catch (e: IOException) {
+            println("Error while uploading file: ${e.message}")
         }
     }
 
     private fun receiveFile(fileName: String, input: InputStream) {
         val response = BufferedReader(InputStreamReader(input)).readLine()
         if (response.startsWith("OK")) {
-            val file = File("downloaded_$fileName")
-            FileOutputStream(file).use { fos ->
-                val buffer = ByteArray(4096)
-                var bytesRead: Int
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    fos.write(buffer, 0, bytesRead)
+            try {
+                val file = File("downloaded_$fileName")
+                FileOutputStream(file).use { fos ->
+                    val buffer = ByteArray(4096)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        fos.write(buffer, 0, bytesRead)
+                    }
                 }
+                println("Downloaded file: ${file.absolutePath}")
+            } catch (e: IOException) {
+                println("Error while downloading file: ${e.message}")
             }
-            println("Downloaded file: ${file.absolutePath}")
         } else {
-            println(response)
+            println("Server response: $response")
         }
     }
 
     private fun receiveMessages(socket: Socket) {
-        val input = BufferedReader(InputStreamReader(socket.getInputStream()))
-        var message: String?
-        while (true) {
-            message = input.readLine() ?: break
-            println(message)
+        try {
+            val input = BufferedReader(InputStreamReader(socket.getInputStream()))
+            var message: String?
+            while (true) {
+                message = input.readLine() ?: break
+                println(message)
+            }
+        } catch (e: IOException) {
+            println("Error receiving message: ${e.message}")
         }
     }
 }
